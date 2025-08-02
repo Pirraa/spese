@@ -1,33 +1,43 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Calendar } from "@/components/ui/calendar";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { CalendarIcon, ArrowLeft, Minus, MapPin } from "lucide-react";
 import { format } from "date-fns";
 import { it } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
+import { fontiApi, transazioniApi, type ApiFonte } from "@/lib/api";
 
-// Mock fonti - in una app reale verrebbero da uno store/context
-const mockFonti = [
-  { id: "1", nome: "PostePay", saldo: 250.50 },
-  { id: "2", nome: "Hype", saldo: 120.00 },
-  { id: "3", nome: "Portafoglio", saldo: 45.20 },
-  { id: "4", nome: "Salvadanaio Camera", saldo: 85.75 },
-  { id: "5", nome: "Cassetto Cucina", saldo: 15.30 },
-];
+interface Fonte {
+  id: string;
+  nome: string;
+  saldo: number;
+}
 
 const NuovaSpesa = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [data, setData] = useState<Date>(new Date());
-  
+  const [fonti, setFonti] = useState<Fonte[]>([]);
+  const [loading, setLoading] = useState(true);
+
   const [formData, setFormData] = useState({
     importo: "",
     descrizione: "",
@@ -36,13 +46,42 @@ const NuovaSpesa = () => {
     note: "",
   });
 
-  const fonteSelezionata = mockFonti.find(f => f.id === formData.fonte);
-  const importoNumerico = parseFloat(formData.importo) || 0;
-  const saldoInsufficiente = fonteSelezionata && importoNumerico > fonteSelezionata.saldo;
+  // Carica le fonti dal backend
+  useEffect(() => {
+    const caricaFonti = async () => {
+      try {
+        setLoading(true);
+        const fontiBE = await fontiApi.getAll();
+        const fontiConvertite: Fonte[] = fontiBE.map((fonte: ApiFonte) => ({
+          id: fonte.id,
+          nome: fonte.nome,
+          saldo: fonte.saldo,
+        }));
+        setFonti(fontiConvertite);
+      } catch (error) {
+        console.error("Errore nel caricamento delle fonti:", error);
+        toast({
+          title: "Errore",
+          description:
+            "Impossibile caricare le fonti. Controlla la connessione al server.",
+          variant: "destructive",
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
 
-  const handleSubmit = (e: React.FormEvent) => {
+    caricaFonti();
+  }, [toast]);
+
+  const fonteSelezionata = fonti.find((f) => f.id === formData.fonte);
+  const importoNumerico = parseFloat(formData.importo) || 0;
+  const saldoInsufficiente =
+    fonteSelezionata && importoNumerico > fonteSelezionata.saldo;
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!formData.importo || !formData.descrizione || !formData.fonte) {
       toast({
         title: "Errore",
@@ -51,7 +90,6 @@ const NuovaSpesa = () => {
       });
       return;
     }
-
     if (saldoInsufficiente) {
       toast({
         title: "Saldo insufficiente",
@@ -61,23 +99,33 @@ const NuovaSpesa = () => {
       return;
     }
 
-    // Simulazione salvataggio
-    const nuovaSpesa = {
-      ...formData,
-      importo: parseFloat(formData.importo),
-      data: data.toISOString(),
-      id: Date.now().toString(),
-    };
+    try {
+      await transazioniApi.create({
+        tipo: "SPESA",
+        importo: parseFloat(formData.importo),
+        descrizione: formData.descrizione,
+        fonteId: formData.fonte,
+        luogo: formData.luogo || undefined,
+        data: data.toISOString(),
+      });
 
-    console.log("Nuova spesa:", nuovaSpesa);
-    
-    toast({
-      title: "Spesa registrata",
-      description: `€ ${parseFloat(formData.importo).toFixed(2)} sottratti da ${fonteSelezionata?.nome}`,
-    });
+      toast({
+        title: "Spesa registrata",
+        description: `€ ${parseFloat(formData.importo).toFixed(
+          2
+        )} sottratti da ${fonteSelezionata?.nome}`,
+      });
 
-    // Reset form o redirect
-    navigate("/");
+      // Reset form o redirect
+      navigate("/");
+    } catch (error) {
+      console.error("Errore nel salvataggio della spesa:", error);
+      toast({
+        title: "Errore",
+        description: "Impossibile salvare la spesa. Riprova più tardi.",
+        variant: "destructive",
+      });
+    }
   };
 
   const resetForm = () => {
@@ -117,7 +165,7 @@ const NuovaSpesa = () => {
               <span>Dettagli Spesa</span>
             </CardTitle>
           </CardHeader>
-          
+
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-6">
               {/* Importo */}
@@ -133,17 +181,24 @@ const NuovaSpesa = () => {
                     step="0.01"
                     min="0"
                     value={formData.importo}
-                    onChange={(e) => setFormData(prev => ({ ...prev, importo: e.target.value }))}
+                    onChange={(e) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        importo: e.target.value,
+                      }))
+                    }
                     placeholder="0.00"
                     className={cn(
                       "pl-8 text-lg font-semibold",
-                      saldoInsufficiente && "border-red-500 focus:border-red-500"
+                      saldoInsufficiente &&
+                        "border-red-500 focus:border-red-500"
                     )}
                   />
                 </div>
                 {saldoInsufficiente && (
                   <p className="text-sm text-red-600">
-                    Saldo insufficiente! Disponibile: € {fonteSelezionata?.saldo.toFixed(2)}
+                    Saldo insufficiente! Disponibile: €{" "}
+                    {fonteSelezionata?.saldo.toFixed(2)}
                   </p>
                 )}
               </div>
@@ -154,7 +209,12 @@ const NuovaSpesa = () => {
                 <Input
                   id="descrizione"
                   value={formData.descrizione}
-                  onChange={(e) => setFormData(prev => ({ ...prev, descrizione: e.target.value }))}
+                  onChange={(e) =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      descrizione: e.target.value,
+                    }))
+                  }
                   placeholder="es. Pranzo, Benzina, Spesa alimentare..."
                 />
               </div>
@@ -162,24 +222,30 @@ const NuovaSpesa = () => {
               {/* Fonte di pagamento */}
               <div className="space-y-2">
                 <Label htmlFor="fonte">Paga con *</Label>
-                <Select 
-                  value={formData.fonte} 
-                  onValueChange={(value) => setFormData(prev => ({ ...prev, fonte: value }))}
+                <Select
+                  value={formData.fonte}
+                  onValueChange={(value) =>
+                    setFormData((prev) => ({ ...prev, fonte: value }))
+                  }
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Seleziona da dove prelevare i soldi" />
                   </SelectTrigger>
                   <SelectContent>
-                    {mockFonti.map((fonte) => (
-                      <SelectItem key={fonte.id} value={fonte.id}>
-                        <div className="flex justify-between items-center w-full">
-                          <span>{fonte.nome}</span>
-                          <span className="text-sm text-muted-foreground ml-4">
-                            € {fonte.saldo.toFixed(2)}
-                          </span>
-                        </div>
-                      </SelectItem>
-                    ))}
+                    {loading ? (
+                      <div className="p-2 text-center">Caricamento...</div>
+                    ) : (
+                      fonti.map((fonte) => (
+                        <SelectItem key={fonte.id} value={fonte.id}>
+                          <div className="flex justify-between items-center w-full">
+                            <span>{fonte.nome}</span>
+                            <span className="text-sm text-muted-foreground ml-4">
+                              € {fonte.saldo.toFixed(2)}
+                            </span>
+                          </div>
+                        </SelectItem>
+                      ))
+                    )}
                   </SelectContent>
                 </Select>
                 {fonteSelezionata && (
@@ -197,7 +263,12 @@ const NuovaSpesa = () => {
                   <Input
                     id="luogo"
                     value={formData.luogo}
-                    onChange={(e) => setFormData(prev => ({ ...prev, luogo: e.target.value }))}
+                    onChange={(e) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        luogo: e.target.value,
+                      }))
+                    }
                     placeholder="es. Supermercato, Bar Centrale..."
                     className="pl-10"
                   />
@@ -217,7 +288,9 @@ const NuovaSpesa = () => {
                       )}
                     >
                       <CalendarIcon className="mr-2 h-4 w-4" />
-                      {data ? format(data, "PPP", { locale: it }) : "Seleziona data"}
+                      {data
+                        ? format(data, "PPP", { locale: it })
+                        : "Seleziona data"}
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-auto p-0" align="start">
@@ -238,7 +311,9 @@ const NuovaSpesa = () => {
                 <Textarea
                   id="note"
                   value={formData.note}
-                  onChange={(e) => setFormData(prev => ({ ...prev, note: e.target.value }))}
+                  onChange={(e) =>
+                    setFormData((prev) => ({ ...prev, note: e.target.value }))
+                  }
                   placeholder="Dettagli aggiuntivi sulla spesa..."
                   rows={3}
                 />
@@ -246,8 +321,8 @@ const NuovaSpesa = () => {
 
               {/* Actions */}
               <div className="flex space-x-4 pt-6">
-                <Button 
-                  type="submit" 
+                <Button
+                  type="submit"
                   className="flex-1"
                   disabled={saldoInsufficiente}
                 >
@@ -265,11 +340,18 @@ const NuovaSpesa = () => {
         {/* Quick Tips */}
         <Card className="mt-6 bg-amber-50 border-amber-200">
           <CardContent className="p-4">
-            <h3 className="font-semibold text-amber-900 mb-2">💡 Suggerimenti</h3>
+            <h3 className="font-semibold text-amber-900 mb-2">
+              💡 Suggerimenti
+            </h3>
             <ul className="text-sm text-amber-800 space-y-1">
               <li>• Registra le spese subito per non dimenticarle</li>
-              <li>• Controlla sempre il saldo disponibile prima di registrare</li>
-              <li>• Aggiungi il luogo per tenere traccia delle tue abitudini di spesa</li>
+              <li>
+                • Controlla sempre il saldo disponibile prima di registrare
+              </li>
+              <li>
+                • Aggiungi il luogo per tenere traccia delle tue abitudini di
+                spesa
+              </li>
             </ul>
           </CardContent>
         </Card>

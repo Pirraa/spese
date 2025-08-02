@@ -64,10 +64,22 @@ router.post('/', async (req, res, next) => {
   try {
     const validatedData = fonteSchema.parse(req.body);
     
+    // Per ora usa l'utente demo - in futuro andrà sostituito con l'autenticazione
+    const utente = await prisma.utente.findFirst({
+      where: { email: 'demo@esempio.com' }
+    });
+    
+    if (!utente) {
+      return res.status(400).json({
+        success: false,
+        error: 'Utente non trovato'
+      });
+    }
+    
     const fonte = await prisma.fonte.create({
       data: {
         ...validatedData,
-        utenteId: 'temp-user-id' // Da sostituire con l'ID dell'utente autenticato
+        utenteId: utente.id
       }
     });
     

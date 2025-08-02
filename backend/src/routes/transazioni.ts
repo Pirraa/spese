@@ -85,13 +85,25 @@ router.post('/', async (req, res, next) => {
   try {
     const validatedData = transazioneSchema.parse(req.body);
     
+    // Per ora usa l'utente demo - in futuro andrà sostituito con l'autenticazione
+    const utente = await prisma.utente.findFirst({
+      where: { email: 'demo@esempio.com' }
+    });
+    
+    if (!utente) {
+      return res.status(400).json({
+        success: false,
+        error: 'Utente non trovato'
+      });
+    }
+    
     // Inizio transazione database per garantire consistenza
     const result = await prisma.$transaction(async (tx) => {
       // Crea la transazione
       const transazione = await tx.transazione.create({
         data: {
           ...validatedData,
-          utenteId: 'temp-user-id', // Da sostituire con l'ID dell'utente autenticato
+          utenteId: utente.id,
           data: validatedData.data ? new Date(validatedData.data) : new Date()
         },
         include: {

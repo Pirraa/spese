@@ -1,60 +1,132 @@
+import { useState, useEffect } from "react";
 import { StatCard } from "@/components/StatCard";
 import { TransactionList } from "@/components/TransactionList";
 import { FonteCard } from "@/components/FonteCard";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { 
-  Wallet, 
-  TrendingUp, 
-  TrendingDown, 
-  PiggyBank, 
+import {
+  Wallet,
+  TrendingUp,
+  TrendingDown,
+  PiggyBank,
   Plus,
-  BarChart3 
+  BarChart3,
 } from "lucide-react";
 import { Link } from "react-router-dom";
+import {
+  fontiApi,
+  transazioniApi,
+  convertiTipoFonte,
+  convertiTipoTransazione,
+  type ApiFonte,
+  type ApiTransazione,
+} from "@/lib/api";
+import { useToast } from "@/hooks/use-toast";
 
-// Mock data - sostituire con dati reali
-const mockFonti = [
-  { nome: "PostePay", tipo: "carta" as const, saldo: 250.50, codice: "****1234" },
-  { nome: "Hype", tipo: "digitale" as const, saldo: 120.00 },
-  { nome: "Portafoglio", tipo: "contanti" as const, saldo: 45.20, ubicazione: "Tasca destra" },
-  { nome: "Salvadanaio", tipo: "contanti" as const, saldo: 85.75, ubicazione: "Camera da letto" }
-];
+// Tipi per il componente Dashboard
+interface Fonte {
+  nome: string;
+  tipo: "carta" | "digitale" | "contanti";
+  saldo: number;
+  codice?: string;
+  ubicazione?: string;
+}
 
-const mockTransazioni = [
-  {
-    id: "1",
-    tipo: "spesa" as const,
-    importo: 12.50,
-    descrizione: "Pranzo al bar",
-    fonte: "Portafoglio",
-    data: "2024-01-15",
-    luogo: "Bar Centrale"
-  },
-  {
-    id: "2",
-    tipo: "entrata" as const,
-    importo: 50.00,
-    descrizione: "Prelievo per spese",
-    fonte: "Portafoglio",
-    data: "2024-01-14"
-  },
-  {
-    id: "3",
-    tipo: "trasferimento" as const,
-    importo: 50.00,
-    descrizione: "Prelievo ATM",
-    fonte: "PostePay",
-    fonteDestinazione: "Portafoglio",
-    data: "2024-01-14"
-  }
-];
+interface Transazione {
+  id: string;
+  tipo: "entrata" | "spesa" | "trasferimento";
+  importo: number;
+  descrizione: string;
+  fonte: string;
+  fonteDestinazione?: string;
+  data: string;
+  luogo?: string;
+}
 
 const Dashboard = () => {
-  const patrimonioTotale = mockFonti.reduce((acc, fonte) => acc + fonte.saldo, 0);
-  const entrateDelMese = 750.00; // Mock data
-  const speseDelMese = 420.30; // Mock data
-  const guadagnoDelMese = entrateDelMese - speseDelMese;
+  const [fonti, setFonti] = useState<Fonte[]>([]);
+  const [transazioni, setTransazioni] = useState<Transazione[]>([]);
+  const [statistiche, setStatistiche] = useState({
+    entrate: 0,
+    spese: 0,
+    bilancio: 0,
+  });
+  const [loading, setLoading] = useState(true);
+  const { toast } = useToast();
+
+  useEffect(() => {
+    const caricaDati = async () => {
+      try {
+        setLoading(true);
+
+        // Carica fonti
+        const fontiBE = await fontiApi.getAll();
+        const fontiConvertite: Fonte[] = fontiBE.map((fonte: ApiFonte) => ({
+          nome: fonte.nome,
+          tipo: convertiTipoFonte(fonte.tipo),
+          saldo: fonte.saldo,
+          codice: fonte.codice,
+          ubicazione: fonte.ubicazione,
+        }));
+        setFonti(fontiConvertite);
+
+        // Carica transazioni recenti
+        const { transazioni: transazioniBE } = await transazioniApi.getAll({
+          limit: 10,
+        });
+        const transazioniConvertite: Transazione[] = transazioniBE.map(
+          (t: ApiTransazione) => ({
+            id: t.id,
+            tipo: convertiTipoTransazione(t.tipo),
+            importo: t.importo,
+            descrizione: t.descrizione,
+            fonte: t.fonte.nome,
+            fonteDestinazione: t.fonteDestinazione?.nome,
+            data: new Date(t.data).toISOString().split("T")[0],
+            luogo: t.luogo,
+          })
+        );
+        setTransazioni(transazioniConvertite);
+
+        // Carica statistiche del mese corrente
+        const now = new Date();
+        const stats = await transazioniApi.getStatistiche({
+          mese: now.getMonth() + 1,
+          anno: now.getFullYear(),
+        });
+        setStatistiche({
+          entrate: stats.entrate?.totale || 0,
+          spese: stats.spese?.totale || 0,
+          bilancio: stats.bilancio || 0,
+        });
+      } catch (error) {
+        console.error("Errore nel caricamento dei dati:", error);
+        toast({
+          title: "Errore",
+          description:
+            "Impossibile caricare i dati. Controlla la connessione al server.",
+          variant: "destructive",
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    caricaDati();
+  }, [toast]);
+
+  const patrimonioTotale = fonti.reduce((acc, fonte) => acc + fonte.saldo, 0);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-primary mx-auto"></div>
+          <p className="mt-4 text-muted-foreground">Caricamento dashboard...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -90,25 +162,25 @@ const Dashboard = () => {
             value={patrimonioTotale}
             icon={<PiggyBank className="w-6 h-6" />}
             variant="wealth"
-            trend={{ value: guadagnoDelMese, label: "questo mese" }}
+            trend={{ value: statistiche.bilancio, label: "questo mese" }}
           />
           <StatCard
             title="Entrate del Mese"
-            value={entrateDelMese}
+            value={statistiche.entrate}
             icon={<TrendingUp className="w-6 h-6" />}
             variant="success"
           />
           <StatCard
             title="Spese del Mese"
-            value={speseDelMese}
+            value={statistiche.spese}
             icon={<TrendingDown className="w-6 h-6" />}
             variant="expense"
           />
           <StatCard
             title="Bilancio Mensile"
-            value={guadagnoDelMese}
+            value={statistiche.bilancio}
             icon={<BarChart3 className="w-6 h-6" />}
-            variant={guadagnoDelMese >= 0 ? "success" : "expense"}
+            variant={statistiche.bilancio >= 0 ? "success" : "expense"}
           />
         </div>
 
@@ -117,7 +189,9 @@ const Dashboard = () => {
           {/* Fonti di Denaro */}
           <div className="lg:col-span-2 space-y-6">
             <div className="flex items-center justify-between">
-              <h2 className="text-2xl font-bold text-foreground">Le Tue Fonti</h2>
+              <h2 className="text-2xl font-bold text-foreground">
+                Le Tue Fonti
+              </h2>
               <Button variant="outline" asChild>
                 <Link to="/fonti">
                   <Wallet className="w-4 h-4 mr-2" />
@@ -126,7 +200,7 @@ const Dashboard = () => {
               </Button>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {mockFonti.map((fonte, index) => (
+              {fonti.map((fonte, index) => (
                 <FonteCard
                   key={index}
                   nome={fonte.nome}
@@ -144,11 +218,11 @@ const Dashboard = () => {
           {/* Movimenti Recenti */}
           <div className="space-y-6">
             <TransactionList
-              transactions={mockTransazioni}
+              transactions={transazioni}
               title="Movimenti Recenti"
               maxItems={5}
             />
-            
+
             {/* Quick Actions */}
             <Card className="bg-gradient-card shadow-card">
               <CardHeader>
@@ -161,13 +235,21 @@ const Dashboard = () => {
                     Trasferimento tra Fonti
                   </Link>
                 </Button>
-                <Button variant="outline" asChild className="w-full justify-start">
+                <Button
+                  variant="outline"
+                  asChild
+                  className="w-full justify-start"
+                >
                   <Link to="/report">
                     <BarChart3 className="w-4 h-4 mr-2" />
                     Visualizza Report
                   </Link>
                 </Button>
-                <Button variant="outline" asChild className="w-full justify-start">
+                <Button
+                  variant="outline"
+                  asChild
+                  className="w-full justify-start"
+                >
                   <Link to="/storico">
                     <Wallet className="w-4 h-4 mr-2" />
                     Storico Completo

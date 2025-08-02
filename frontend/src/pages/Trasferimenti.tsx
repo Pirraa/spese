@@ -1,32 +1,54 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Calendar } from "@/components/ui/calendar";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { ArrowLeftRight, ArrowLeft, CalendarIcon, AlertTriangle } from "lucide-react";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+  ArrowLeftRight,
+  ArrowLeft,
+  CalendarIcon,
+  AlertTriangle,
+} from "lucide-react";
 import { format } from "date-fns";
 import { it } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
+import { fontiApi, transazioniApi } from "@/lib/api";
 
-// Mock fonti
-const mockFonti = [
-  { id: "1", nome: "PostePay", saldo: 250.50, tipo: "carta" },
-  { id: "2", nome: "Hype", saldo: 120.00, tipo: "digitale" },
-  { id: "3", nome: "Portafoglio", saldo: 45.20, tipo: "contanti" },
-  { id: "4", nome: "Salvadanaio Camera", saldo: 85.75, tipo: "contanti" },
-  { id: "5", nome: "Cassetto Cucina", saldo: 15.30, tipo: "contanti" },
-];
+// Tipi per l'interfaccia
+interface Fonte {
+  id: string;
+  nome: string;
+  saldo: number;
+}
+
+interface ApiFonte {
+  id: string;
+  nome: string;
+  saldo: number;
+}
 
 const Trasferimenti = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [data, setData] = useState<Date>(new Date());
-  
+  const [fonti, setFonti] = useState<Fonte[]>([]);
+  const [loading, setLoading] = useState(false);
+
   const [formData, setFormData] = useState({
     importo: "",
     fonteDa: "",
@@ -34,18 +56,46 @@ const Trasferimenti = () => {
     descrizione: "",
   });
 
-  const fonteDa = mockFonti.find(f => f.id === formData.fonteDa);
-  const fonteA = mockFonti.find(f => f.id === formData.fonteA);
+  // Carica le fonti dal backend
+  useEffect(() => {
+    const caricaFonti = async () => {
+      try {
+        setLoading(true);
+        const fontiBE = await fontiApi.getAll();
+        const fontiConvertite: Fonte[] = fontiBE.map((fonte: ApiFonte) => ({
+          id: fonte.id,
+          nome: fonte.nome,
+          saldo: fonte.saldo,
+        }));
+        setFonti(fontiConvertite);
+      } catch (error) {
+        console.error("Errore nel caricamento delle fonti:", error);
+        toast({
+          title: "Errore",
+          description:
+            "Impossibile caricare le fonti. Controlla la connessione al server.",
+          variant: "destructive",
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    caricaFonti();
+  }, [toast]);
+
+  const fonteDa = fonti.find((f) => f.id === formData.fonteDa);
+  const fonteA = fonti.find((f) => f.id === formData.fonteA);
   const importoNumerico = parseFloat(formData.importo) || 0;
   const saldoInsufficiente = fonteDa && importoNumerico > fonteDa.saldo;
   const stessaFonte = formData.fonteDa === formData.fonteA;
 
   // Filtra le fonti di destinazione per escludere quella di origine
-  const fontiDestinazione = mockFonti.filter(f => f.id !== formData.fonteDa);
+  const fontiDestinazione = fonti.filter((f) => f.id !== formData.fonteDa);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!formData.importo || !formData.fonteDa || !formData.fonteA) {
       toast({
         title: "Errore",
@@ -73,23 +123,49 @@ const Trasferimenti = () => {
       return;
     }
 
-    // Simulazione trasferimento
-    const trasferimento = {
-      ...formData,
-      importo: parseFloat(formData.importo),
-      data: data.toISOString(),
-      id: Date.now().toString(),
-    };
+    try {
+      // Crea due transazioni: una di spesa dalla fonte di origine e una di entrata alla fonte di destinazione
+      const importo = parseFloat(formData.importo);
+      const descrizione =
+        formData.descrizione ||
+        `Trasferimento da ${fonteDa?.nome} a ${fonteA?.nome}`;
 
-    console.log("Nuovo trasferimento:", trasferimento);
-    
-    toast({
-      title: "Trasferimento completato",
-      description: `€ ${parseFloat(formData.importo).toFixed(2)} trasferiti da ${fonteDa?.nome} a ${fonteA?.nome}`,
-    });
+      // Transazione di uscita dalla fonte di origine
+      await transazioniApi.create({
+        tipo: "SPESA",
+        importo: importo,
+        descrizione: `${descrizione} (Uscita)`,
+        fonteId: formData.fonteDa,
+        data: data.toISOString(),
+      });
 
-    // Reset form o redirect
-    navigate("/");
+      // Transazione di entrata nella fonte di destinazione
+      await transazioniApi.create({
+        tipo: "ENTRATA",
+        importo: importo,
+        descrizione: `${descrizione} (Entrata)`,
+        fonteId: formData.fonteA,
+        data: data.toISOString(),
+      });
+
+      toast({
+        title: "Trasferimento completato",
+        description: `€ ${importo.toFixed(2)} trasferiti da ${
+          fonteDa?.nome
+        } a ${fonteA?.nome}`,
+      });
+
+      // Reset form o redirect
+      navigate("/");
+    } catch (error) {
+      console.error("Errore nel trasferimento:", error);
+      toast({
+        title: "Errore",
+        description:
+          "Impossibile completare il trasferimento. Riprova più tardi.",
+        variant: "destructive",
+      });
+    }
   };
 
   const resetForm = () => {
@@ -111,7 +187,9 @@ const Trasferimenti = () => {
             <ArrowLeft className="w-4 h-4" />
           </Button>
           <div>
-            <h1 className="text-3xl font-bold text-foreground">Trasferimento</h1>
+            <h1 className="text-3xl font-bold text-foreground">
+              Trasferimento
+            </h1>
             <p className="text-muted-foreground">
               Sposta denaro tra le tue fonti
             </p>
@@ -124,10 +202,13 @@ const Trasferimenti = () => {
             <div className="flex items-start space-x-3">
               <AlertTriangle className="w-5 h-5 text-blue-600 mt-0.5" />
               <div>
-                <h3 className="font-semibold text-blue-900">Informazioni sui Trasferimenti</h3>
+                <h3 className="font-semibold text-blue-900">
+                  Informazioni sui Trasferimenti
+                </h3>
                 <p className="text-sm text-blue-800 mt-1">
-                  I trasferimenti tra fonti non vengono conteggiati come entrate o spese nel bilancio mensile. 
-                  Sono semplicemente spostamenti di denaro che possiedi già.
+                  I trasferimenti tra fonti non vengono conteggiati come entrate
+                  o spese nel bilancio mensile. Sono semplicemente spostamenti
+                  di denaro che possiedi già.
                 </p>
               </div>
             </div>
@@ -144,7 +225,7 @@ const Trasferimenti = () => {
               <span>Dettagli Trasferimento</span>
             </CardTitle>
           </CardHeader>
-          
+
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-6">
               {/* Importo */}
@@ -160,17 +241,24 @@ const Trasferimenti = () => {
                     step="0.01"
                     min="0"
                     value={formData.importo}
-                    onChange={(e) => setFormData(prev => ({ ...prev, importo: e.target.value }))}
+                    onChange={(e) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        importo: e.target.value,
+                      }))
+                    }
                     placeholder="0.00"
                     className={cn(
                       "pl-8 text-lg font-semibold",
-                      saldoInsufficiente && "border-red-500 focus:border-red-500"
+                      saldoInsufficiente &&
+                        "border-red-500 focus:border-red-500"
                     )}
                   />
                 </div>
                 {saldoInsufficiente && (
                   <p className="text-sm text-red-600">
-                    Saldo insufficiente! Disponibile: € {fonteDa?.saldo.toFixed(2)}
+                    Saldo insufficiente! Disponibile: €{" "}
+                    {fonteDa?.saldo.toFixed(2)}
                   </p>
                 )}
               </div>
@@ -178,28 +266,34 @@ const Trasferimenti = () => {
               {/* Da (Fonte di origine) */}
               <div className="space-y-2">
                 <Label htmlFor="fonteDa">Da *</Label>
-                <Select 
-                  value={formData.fonteDa} 
-                  onValueChange={(value) => setFormData(prev => ({ 
-                    ...prev, 
-                    fonteDa: value,
-                    fonteA: prev.fonteA === value ? "" : prev.fonteA // Reset destinazione se uguale
-                  }))}
+                <Select
+                  value={formData.fonteDa}
+                  onValueChange={(value) =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      fonteDa: value,
+                      fonteA: prev.fonteA === value ? "" : prev.fonteA, // Reset destinazione se uguale
+                    }))
+                  }
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Seleziona fonte di origine" />
                   </SelectTrigger>
                   <SelectContent>
-                    {mockFonti.map((fonte) => (
-                      <SelectItem key={fonte.id} value={fonte.id}>
-                        <div className="flex justify-between items-center w-full">
-                          <span>{fonte.nome}</span>
-                          <span className="text-sm text-muted-foreground ml-4">
-                            € {fonte.saldo.toFixed(2)}
-                          </span>
-                        </div>
-                      </SelectItem>
-                    ))}
+                    {loading ? (
+                      <div className="p-2 text-center">Caricamento...</div>
+                    ) : (
+                      fonti.map((fonte) => (
+                        <SelectItem key={fonte.id} value={fonte.id}>
+                          <div className="flex justify-between items-center w-full">
+                            <span>{fonte.nome}</span>
+                            <span className="text-sm text-muted-foreground ml-4">
+                              € {fonte.saldo.toFixed(2)}
+                            </span>
+                          </div>
+                        </SelectItem>
+                      ))
+                    )}
                   </SelectContent>
                 </Select>
                 {fonteDa && (
@@ -212,25 +306,35 @@ const Trasferimenti = () => {
               {/* A (Fonte di destinazione) */}
               <div className="space-y-2">
                 <Label htmlFor="fonteA">A *</Label>
-                <Select 
-                  value={formData.fonteA} 
-                  onValueChange={(value) => setFormData(prev => ({ ...prev, fonteA: value }))}
+                <Select
+                  value={formData.fonteA}
+                  onValueChange={(value) =>
+                    setFormData((prev) => ({ ...prev, fonteA: value }))
+                  }
                   disabled={!formData.fonteDa}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Seleziona fonte di destinazione" />
                   </SelectTrigger>
                   <SelectContent>
-                    {fontiDestinazione.map((fonte) => (
-                      <SelectItem key={fonte.id} value={fonte.id}>
-                        <div className="flex justify-between items-center w-full">
-                          <span>{fonte.nome}</span>
-                          <span className="text-sm text-muted-foreground ml-4">
-                            € {fonte.saldo.toFixed(2)}
-                          </span>
-                        </div>
-                      </SelectItem>
-                    ))}
+                    {loading ? (
+                      <div className="p-2 text-center">Caricamento...</div>
+                    ) : !formData.fonteDa ? (
+                      <div className="p-2 text-center text-muted-foreground">
+                        Seleziona prima la fonte di origine
+                      </div>
+                    ) : (
+                      fontiDestinazione.map((fonte) => (
+                        <SelectItem key={fonte.id} value={fonte.id}>
+                          <div className="flex justify-between items-center w-full">
+                            <span>{fonte.nome}</span>
+                            <span className="text-sm text-muted-foreground ml-4">
+                              € {fonte.saldo.toFixed(2)}
+                            </span>
+                          </div>
+                        </SelectItem>
+                      ))
+                    )}
                   </SelectContent>
                 </Select>
               </div>
@@ -241,7 +345,12 @@ const Trasferimenti = () => {
                 <Input
                   id="descrizione"
                   value={formData.descrizione}
-                  onChange={(e) => setFormData(prev => ({ ...prev, descrizione: e.target.value }))}
+                  onChange={(e) =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      descrizione: e.target.value,
+                    }))
+                  }
                   placeholder="es. Prelievo ATM, Riempimento portafoglio..."
                 />
               </div>
@@ -259,7 +368,9 @@ const Trasferimenti = () => {
                       )}
                     >
                       <CalendarIcon className="mr-2 h-4 w-4" />
-                      {data ? format(data, "PPP", { locale: it }) : "Seleziona data"}
+                      {data
+                        ? format(data, "PPP", { locale: it })
+                        : "Seleziona data"}
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-auto p-0" align="start">
@@ -278,24 +389,42 @@ const Trasferimenti = () => {
               {formData.fonteDa && formData.fonteA && formData.importo && (
                 <Card className="bg-muted/50">
                   <CardContent className="p-4">
-                    <h3 className="font-semibold mb-2">Riepilogo Trasferimento</h3>
+                    <h3 className="font-semibold mb-2">
+                      Riepilogo Trasferimento
+                    </h3>
                     <div className="space-y-2 text-sm">
                       <div className="flex justify-between">
                         <span>Da: {fonteDa?.nome}</span>
-                        <span className="text-red-600">- € {importoNumerico.toFixed(2)}</span>
+                        <span className="text-red-600">
+                          - € {importoNumerico.toFixed(2)}
+                        </span>
                       </div>
                       <div className="flex justify-between">
                         <span>A: {fonteA?.nome}</span>
-                        <span className="text-green-600">+ € {importoNumerico.toFixed(2)}</span>
+                        <span className="text-green-600">
+                          + € {importoNumerico.toFixed(2)}
+                        </span>
                       </div>
                       <hr className="my-2" />
                       <div className="flex justify-between font-medium">
                         <span>Nuovo saldo {fonteDa?.nome}:</span>
-                        <span>€ {(fonteDa ? fonteDa.saldo - importoNumerico : 0).toFixed(2)}</span>
+                        <span>
+                          €{" "}
+                          {(fonteDa
+                            ? fonteDa.saldo - importoNumerico
+                            : 0
+                          ).toFixed(2)}
+                        </span>
                       </div>
                       <div className="flex justify-between font-medium">
                         <span>Nuovo saldo {fonteA?.nome}:</span>
-                        <span>€ {(fonteA ? fonteA.saldo + importoNumerico : 0).toFixed(2)}</span>
+                        <span>
+                          €{" "}
+                          {(fonteA
+                            ? fonteA.saldo + importoNumerico
+                            : 0
+                          ).toFixed(2)}
+                        </span>
                       </div>
                     </div>
                   </CardContent>
@@ -304,8 +433,8 @@ const Trasferimenti = () => {
 
               {/* Actions */}
               <div className="flex space-x-4 pt-6">
-                <Button 
-                  type="submit" 
+                <Button
+                  type="submit"
                   className="flex-1"
                   disabled={saldoInsufficiente || stessaFonte}
                 >

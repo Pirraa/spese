@@ -9,6 +9,8 @@ import Fonti from "./pages/Fonti";
 import NuovaEntrata from "./pages/NuovaEntrata";
 import NuovaSpesa from "./pages/NuovaSpesa";
 import Trasferimenti from "./pages/Trasferimenti";
+import Report from "./pages/Report";
+import Storico from "./pages/Storico";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -26,7 +28,8 @@ const App = () => (
           <Route path="/entrata" element={<NuovaEntrata />} />
           <Route path="/spesa" element={<NuovaSpesa />} />
           <Route path="/trasferimenti" element={<Trasferimenti />} />
-          {/* TODO: Aggiungi Report e Storico */}
+          <Route path="/report" element={<Report />} />
+          <Route path="/storico" element={<Storico />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
