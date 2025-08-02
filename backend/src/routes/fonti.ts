@@ -2,8 +2,12 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../utils/db.js';
 import { AppError } from '../middleware/errorHandler.js';
+import { authenticateToken, AuthRequest } from '../middleware/auth.js';
 
 const router = Router();
+
+// Applica l'autenticazione a tutte le route
+router.use(authenticateToken);
 
 // Schema di validazione per le fonti
 const fonteSchema = z.object({
@@ -14,11 +18,14 @@ const fonteSchema = z.object({
   codice: z.string().optional(),
 });
 
-// GET /api/fonti - Ottieni tutte le fonti
-router.get('/', async (req, res, next) => {
+// GET /api/fonti - Ottieni tutte le fonti dell'utente autenticato
+router.get('/', async (req: AuthRequest, res, next) => {
   try {
     const fonti = await prisma.fonte.findMany({
-      where: { attiva: true },
+      where: { 
+        attiva: true,
+        utenteId: req.userId! 
+      },
       orderBy: { createdAt: 'desc' }
     });
     
@@ -31,13 +38,16 @@ router.get('/', async (req, res, next) => {
   }
 });
 
-// GET /api/fonti/:id - Ottieni una fonte specifica
-router.get('/:id', async (req, res, next) => {
+// GET /api/fonti/:id - Ottieni una fonte specifica dell'utente
+router.get('/:id', async (req: AuthRequest, res, next) => {
   try {
     const { id } = req.params;
     
     const fonte = await prisma.fonte.findUnique({
-      where: { id },
+      where: { 
+        id,
+        utenteId: req.userId! 
+      },
       include: {
         transazioniOrigine: {
           take: 10,
@@ -59,27 +69,15 @@ router.get('/:id', async (req, res, next) => {
   }
 });
 
-// POST /api/fonti - Crea una nuova fonte
-router.post('/', async (req, res, next) => {
+// POST /api/fonti - Crea una nuova fonte per l'utente autenticato
+router.post('/', async (req: AuthRequest, res, next) => {
   try {
     const validatedData = fonteSchema.parse(req.body);
-    
-    // Per ora usa l'utente demo - in futuro andrà sostituito con l'autenticazione
-    const utente = await prisma.utente.findFirst({
-      where: { email: 'demo@esempio.com' }
-    });
-    
-    if (!utente) {
-      return res.status(400).json({
-        success: false,
-        error: 'Utente non trovato'
-      });
-    }
     
     const fonte = await prisma.fonte.create({
       data: {
         ...validatedData,
-        utenteId: utente.id
+        utenteId: req.userId!
       }
     });
     
@@ -92,11 +90,21 @@ router.post('/', async (req, res, next) => {
   }
 });
 
-// PUT /api/fonti/:id - Aggiorna una fonte
-router.put('/:id', async (req, res, next) => {
+// PUT /api/fonti/:id - Aggiorna una fonte dell'utente
+router.put('/:id', async (req: AuthRequest, res, next) => {
   try {
     const { id } = req.params;
     const validatedData = fonteSchema.partial().parse(req.body);
+    
+    // Verifica che la fonte appartenga all'utente
+    const existingFonte = await prisma.fonte.findUnique({
+      where: { id },
+      select: { utenteId: true }
+    });
+    
+    if (!existingFonte || existingFonte.utenteId !== req.userId) {
+      throw new AppError('Fonte non trovata', 404);
+    }
     
     const fonte = await prisma.fonte.update({
       where: { id },
@@ -112,10 +120,20 @@ router.put('/:id', async (req, res, next) => {
   }
 });
 
-// DELETE /api/fonti/:id - Elimina una fonte (soft delete)
-router.delete('/:id', async (req, res, next) => {
+// DELETE /api/fonti/:id - Elimina una fonte dell'utente (soft delete)
+router.delete('/:id', async (req: AuthRequest, res, next) => {
   try {
     const { id } = req.params;
+    
+    // Verifica che la fonte appartenga all'utente
+    const existingFonte = await prisma.fonte.findUnique({
+      where: { id },
+      select: { utenteId: true }
+    });
+    
+    if (!existingFonte || existingFonte.utenteId !== req.userId) {
+      throw new AppError('Fonte non trovata', 404);
+    }
     
     await prisma.fonte.update({
       where: { id },

@@ -2,8 +2,12 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../utils/db.js';
 import { AppError } from '../middleware/errorHandler.js';
+import { authenticateToken, AuthRequest } from '../middleware/auth.js';
 
 const router = Router();
+
+// Applica l'autenticazione a tutte le route
+router.use(authenticateToken);
 
 // Schema di validazione per le transazioni
 const transazioneSchema = z.object({
@@ -16,16 +20,17 @@ const transazioneSchema = z.object({
   data: z.string().datetime().optional(),
 });
 
-// GET /api/transazioni - Ottieni tutte le transazioni
-router.get('/', async (req, res, next) => {
+// GET /api/transazioni - Ottieni tutte le transazioni dell'utente
+router.get('/', async (req: AuthRequest, res, next) => {
   try {
     const { limit = '20', offset = '0', tipo } = req.query;
 
     // Assumendo che il tipo enum sia esportato da Prisma come TipoTransazione
     // e che req.query.tipo sia una stringa valida per l'enum
-    const whereClause = tipo
-      ? { tipo: tipo as any } // oppure usare Prisma.TipoTransazione se disponibile
-      : {};
+    const whereClause = {
+      utenteId: req.userId!,
+      ...(tipo ? { tipo: tipo as any } : {})
+    };
 
     const transazioni = await prisma.transazione.findMany({
       where: whereClause,
@@ -54,13 +59,16 @@ router.get('/', async (req, res, next) => {
   }
 });
 
-// GET /api/transazioni/:id - Ottieni una transazione specifica
-router.get('/:id', async (req, res, next) => {
+// GET /api/transazioni/:id - Ottieni una transazione specifica dell'utente
+router.get('/:id', async (req: AuthRequest, res, next) => {
   try {
     const { id } = req.params;
     
     const transazione = await prisma.transazione.findUnique({
-      where: { id },
+      where: { 
+        id,
+        utenteId: req.userId!
+      },
       include: {
         fonte: true,
         fonteDestinazione: true
@@ -80,21 +88,35 @@ router.get('/:id', async (req, res, next) => {
   }
 });
 
-// POST /api/transazioni - Crea una nuova transazione
-router.post('/', async (req, res, next) => {
+// POST /api/transazioni - Crea una nuova transazione per l'utente autenticato
+router.post('/', async (req: AuthRequest, res, next) => {
   try {
     const validatedData = transazioneSchema.parse(req.body);
     
-    // Per ora usa l'utente demo - in futuro andrà sostituito con l'autenticazione
-    const utente = await prisma.utente.findFirst({
-      where: { email: 'demo@esempio.com' }
+    // Verifica che le fonti appartengano all'utente
+    const fonte = await prisma.fonte.findUnique({
+      where: { 
+        id: validatedData.fonteId,
+        utenteId: req.userId!
+      }
     });
     
-    if (!utente) {
-      return res.status(400).json({
-        success: false,
-        error: 'Utente non trovato'
+    if (!fonte) {
+      throw new AppError('Fonte non trovata o non autorizzata', 404);
+    }
+    
+    // Se è un trasferimento, verifica anche la fonte destinazione
+    if (validatedData.tipo === 'TRASFERIMENTO' && validatedData.fonteDestinazioneId) {
+      const fonteDestinazione = await prisma.fonte.findUnique({
+        where: { 
+          id: validatedData.fonteDestinazioneId,
+          utenteId: req.userId!
+        }
       });
+      
+      if (!fonteDestinazione) {
+        throw new AppError('Fonte destinazione non trovata o non autorizzata', 404);
+      }
     }
     
     // Inizio transazione database per garantire consistenza
@@ -103,7 +125,7 @@ router.post('/', async (req, res, next) => {
       const transazione = await tx.transazione.create({
         data: {
           ...validatedData,
-          utenteId: utente.id,
+          utenteId: req.userId!,
           data: validatedData.data ? new Date(validatedData.data) : new Date()
         },
         include: {
@@ -148,11 +170,21 @@ router.post('/', async (req, res, next) => {
   }
 });
 
-// PUT /api/transazioni/:id - Aggiorna una transazione
-router.put('/:id', async (req, res, next) => {
+// PUT /api/transazioni/:id - Aggiorna una transazione dell'utente
+router.put('/:id', async (req: AuthRequest, res, next) => {
   try {
     const { id } = req.params;
     const validatedData = transazioneSchema.partial().parse(req.body);
+    
+    // Verifica che la transazione appartenga all'utente
+    const existingTransazione = await prisma.transazione.findUnique({
+      where: { id },
+      select: { utenteId: true }
+    });
+    
+    if (!existingTransazione || existingTransazione.utenteId !== req.userId) {
+      throw new AppError('Transazione non trovata', 404);
+    }
     
     const transazione = await prisma.transazione.update({
       where: { id },
@@ -175,10 +207,20 @@ router.put('/:id', async (req, res, next) => {
   }
 });
 
-// DELETE /api/transazioni/:id - Elimina una transazione
-router.delete('/:id', async (req, res, next) => {
+// DELETE /api/transazioni/:id - Elimina una transazione dell'utente
+router.delete('/:id', async (req: AuthRequest, res, next) => {
   try {
     const { id } = req.params;
+    
+    // Verifica che la transazione appartenga all'utente
+    const existingTransazione = await prisma.transazione.findUnique({
+      where: { id },
+      select: { utenteId: true }
+    });
+    
+    if (!existingTransazione || existingTransazione.utenteId !== req.userId) {
+      throw new AppError('Transazione non trovata', 404);
+    }
     
     await prisma.transazione.delete({
       where: { id }
@@ -193,20 +235,23 @@ router.delete('/:id', async (req, res, next) => {
   }
 });
 
-// GET /api/transazioni/statistiche/riepilogo - Statistiche generali
-router.get('/statistiche/riepilogo', async (req, res, next) => {
+// GET /api/transazioni/statistiche/riepilogo - Statistiche generali dell'utente
+router.get('/statistiche/riepilogo', async (req: AuthRequest, res, next) => {
   try {
     const { mese, anno } = req.query;
     
     const dataInizio = new Date(parseInt(anno as string || '2024'), parseInt(mese as string || '0') - 1, 1);
     const dataFine = new Date(parseInt(anno as string || '2024'), parseInt(mese as string || '0'), 0);
     
-    const whereClause = mese && anno ? {
-      data: {
-        gte: dataInizio,
-        lte: dataFine
-      }
-    } : {};
+    const whereClause = {
+      utenteId: req.userId!,
+      ...(mese && anno ? {
+        data: {
+          gte: dataInizio,
+          lte: dataFine
+        }
+      } : {})
+    };
     
     const [entrate, spese, trasferimenti] = await Promise.all([
       prisma.transazione.aggregate({

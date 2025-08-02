@@ -2,8 +2,12 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { AuthProvider } from "./contexts/AuthContext";
 import { Navigation } from "./components/Navigation";
+import ProtectedRoute from "./components/ProtectedRoute";
+import Login from "./pages/Login";
+import Register from "./pages/Register";
 import Dashboard from "./pages/Dashboard";
 import Fonti from "./pages/Fonti";
 import NuovaEntrata from "./pages/NuovaEntrata";
@@ -20,19 +24,82 @@ const App = () => (
     <TooltipProvider>
       <Toaster />
       <Sonner />
-      <BrowserRouter>
-        <Navigation />
-        <Routes>
-          <Route path="/" element={<Dashboard />} />
-          <Route path="/fonti" element={<Fonti />} />
-          <Route path="/entrata" element={<NuovaEntrata />} />
-          <Route path="/spesa" element={<NuovaSpesa />} />
-          <Route path="/trasferimenti" element={<Trasferimenti />} />
-          <Route path="/report" element={<Report />} />
-          <Route path="/storico" element={<Storico />} />
-          <Route path="*" element={<NotFound />} />
-        </Routes>
-      </BrowserRouter>
+      <AuthProvider>
+        <BrowserRouter>
+          <Routes>
+            {/* Rotte pubbliche */}
+            <Route path="/login" element={<Login />} />
+            <Route path="/register" element={<Register />} />
+
+            {/* Rotte protette */}
+            <Route path="/" element={<Navigate to="/dashboard" replace />} />
+            <Route
+              path="/dashboard"
+              element={
+                <ProtectedRoute>
+                  <Navigation />
+                  <Dashboard />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/fonti"
+              element={
+                <ProtectedRoute>
+                  <Navigation />
+                  <Fonti />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/entrata"
+              element={
+                <ProtectedRoute>
+                  <Navigation />
+                  <NuovaEntrata />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/spesa"
+              element={
+                <ProtectedRoute>
+                  <Navigation />
+                  <NuovaSpesa />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/trasferimenti"
+              element={
+                <ProtectedRoute>
+                  <Navigation />
+                  <Trasferimenti />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/report"
+              element={
+                <ProtectedRoute>
+                  <Navigation />
+                  <Report />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/storico"
+              element={
+                <ProtectedRoute>
+                  <Navigation />
+                  <Storico />
+                </ProtectedRoute>
+              }
+            />
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </BrowserRouter>
+      </AuthProvider>
     </TooltipProvider>
   </QueryClientProvider>
 );

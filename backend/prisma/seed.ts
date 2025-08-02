@@ -1,10 +1,14 @@
 import { PrismaClient } from '@prisma/client';
+import bcrypt from 'bcryptjs';
 import process from 'process';
 
 const prisma = new PrismaClient();
 
 async function main() {
   console.log('🌱 Inizio seeding del database...');
+
+  // Hash della password demo
+  const hashedPassword = await bcrypt.hash('password123', 12);
 
   // Crea un utente di esempio
   const utente = await prisma.utente.upsert({
@@ -14,7 +18,7 @@ async function main() {
       email: 'demo@esempio.com',
       nome: 'Mario',
       cognome: 'Rossi',
-      password: 'password123' // In produzione, questo dovrebbe essere hashato
+      password: hashedPassword
     }
   });
 

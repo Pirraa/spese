@@ -1,5 +1,31 @@
 const API_BASE_URL = 'http://localhost:3001/api';
 
+// Funzione helper per le chiamate autenticate
+const authenticatedFetch = async (url: string, options: RequestInit = {}): Promise<Response> => {
+  const token = localStorage.getItem('token');
+  
+  const headers = {
+    'Content-Type': 'application/json',
+    ...(token && { 'Authorization': `Bearer ${token}` }),
+    ...options.headers,
+  };
+
+  const response = await fetch(url, {
+    ...options,
+    headers,
+  });
+
+  // Se il token è scaduto, reindirizza al login
+  if (response.status === 401) {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    window.location.href = '/login';
+    throw new Error('Sessione scaduta');
+  }
+
+  return response;
+};
+
 // Tipi per l'API
 export interface ApiFonte {
   id: string;
@@ -48,7 +74,7 @@ export interface ApiListResponse<T> extends ApiResponse<T[]> {
 export const fontiApi = {
   // Ottieni tutte le fonti
   getAll: async (): Promise<ApiFonte[]> => {
-    const response = await fetch(`${API_BASE_URL}/fonti`);
+    const response = await authenticatedFetch(`${API_BASE_URL}/fonti`);
     if (!response.ok) {
       throw new Error('Errore nel recupero delle fonti');
     }
@@ -58,7 +84,7 @@ export const fontiApi = {
 
   // Ottieni una fonte specifica
   getById: async (id: string): Promise<ApiFonte> => {
-    const response = await fetch(`${API_BASE_URL}/fonti/${id}`);
+    const response = await authenticatedFetch(`${API_BASE_URL}/fonti/${id}`);
     if (!response.ok) {
       throw new Error('Errore nel recupero della fonte');
     }
@@ -68,11 +94,8 @@ export const fontiApi = {
 
   // Crea una nuova fonte
   create: async (fonte: Omit<ApiFonte, 'id' | 'utenteId' | 'createdAt' | 'updatedAt' | 'attiva'>): Promise<ApiFonte> => {
-    const response = await fetch(`${API_BASE_URL}/fonti`, {
+    const response = await authenticatedFetch(`${API_BASE_URL}/fonti`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
       body: JSON.stringify(fonte),
     });
     if (!response.ok) {
@@ -84,11 +107,8 @@ export const fontiApi = {
 
   // Aggiorna una fonte
   update: async (id: string, fonte: Partial<Omit<ApiFonte, 'id' | 'utenteId' | 'createdAt' | 'updatedAt'>>): Promise<ApiFonte> => {
-    const response = await fetch(`${API_BASE_URL}/fonti/${id}`, {
+    const response = await authenticatedFetch(`${API_BASE_URL}/fonti/${id}`, {
       method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-      },
       body: JSON.stringify(fonte),
     });
     if (!response.ok) {
@@ -100,7 +120,7 @@ export const fontiApi = {
 
   // Elimina una fonte
   delete: async (id: string): Promise<void> => {
-    const response = await fetch(`${API_BASE_URL}/fonti/${id}`, {
+    const response = await authenticatedFetch(`${API_BASE_URL}/fonti/${id}`, {
       method: 'DELETE',
     });
     if (!response.ok) {
@@ -118,7 +138,7 @@ export const transazioniApi = {
     if (params?.offset) searchParams.append('offset', params.offset.toString());
     if (params?.tipo) searchParams.append('tipo', params.tipo);
 
-    const response = await fetch(`${API_BASE_URL}/transazioni?${searchParams}`);
+    const response = await authenticatedFetch(`${API_BASE_URL}/transazioni?${searchParams}`);
     if (!response.ok) {
       throw new Error('Errore nel recupero delle transazioni');
     }
@@ -131,7 +151,7 @@ export const transazioniApi = {
 
   // Ottieni una transazione specifica
   getById: async (id: string): Promise<ApiTransazione> => {
-    const response = await fetch(`${API_BASE_URL}/transazioni/${id}`);
+    const response = await authenticatedFetch(`${API_BASE_URL}/transazioni/${id}`);
     if (!response.ok) {
       throw new Error('Errore nel recupero della transazione');
     }
@@ -149,11 +169,8 @@ export const transazioniApi = {
     fonteDestinazioneId?: string;
     data?: string;
   }): Promise<ApiTransazione> => {
-    const response = await fetch(`${API_BASE_URL}/transazioni`, {
+    const response = await authenticatedFetch(`${API_BASE_URL}/transazioni`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
       body: JSON.stringify(transazione),
     });
     if (!response.ok) {
@@ -169,7 +186,7 @@ export const transazioniApi = {
     if (params?.mese) searchParams.append('mese', params.mese.toString());
     if (params?.anno) searchParams.append('anno', params.anno.toString());
 
-    const response = await fetch(`${API_BASE_URL}/transazioni/statistiche/riepilogo?${searchParams}`);
+    const response = await authenticatedFetch(`${API_BASE_URL}/transazioni/statistiche/riepilogo?${searchParams}`);
     if (!response.ok) {
       throw new Error('Errore nel recupero delle statistiche');
     }
