@@ -20,11 +20,18 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// Rate limiting
+// Rate limiting - più permissivo in sviluppo
 const limiter = rateLimit({
-  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000'), // 15 minuti
-  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '100'),
+  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '60000'), // 1 minuto
+  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '1000'), // 1000 richieste al minuto
   message: 'Troppe richieste da questo IP, riprova più tardi.',
+  skip: (req) => {
+    // Salta il rate limiting per l'health check in sviluppo
+    if (process.env.NODE_ENV === 'development' && req.path === '/health') {
+      return true;
+    }
+    return false;
+  },
 });
 
 // Middleware globali

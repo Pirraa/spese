@@ -1,99 +1,88 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
-    provider = "prisma-client-js"
+  provider = "prisma-client-js"
 }
 
 datasource db {
-    provider = "postgresql"
-    url      = env("DATABASE_URL")
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 model Utente {
-    id        String   @id @default(cuid())
-    email     String   @unique
-    nome      String
-    cognome   String
-    password  String
-    createdAt DateTime @default(now())
-    updatedAt DateTime @updatedAt
+  id          String        @id @default(cuid())
+  email       String        @unique
+  nome        String
+  cognome     String
+  password    String
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  fonti       Fonte[]
+  transazioni Transazione[]
 
-    // Relazioni
-    fonti       Fonte[]
-    transazioni Transazione[]
-
-    @@map("utenti")
+  @@map("utenti")
 }
 
 model Fonte {
-    id         String    @id @default(cuid())
-    nome       String
-    tipo       TipoFonte
-    saldo      Float     @default(0)
-    ubicazione String?
-    codice     String?
-    attiva     Boolean   @default(true)
-    createdAt  DateTime  @default(now())
-    updatedAt  DateTime  @updatedAt
+  id                      String        @id @default(cuid())
+  nome                    String
+  tipo                    TipoFonte
+  saldo                   Float         @default(0)
+  ubicazione              String?
+  codice                  String?
+  attiva                  Boolean       @default(true)
+  createdAt               DateTime      @default(now())
+  updatedAt               DateTime      @updatedAt
+  utenteId                String
+  utente                  Utente        @relation(fields: [utenteId], references: [id], onDelete: Cascade)
+  transazioniDestinazione Transazione[] @relation("FonteDestinazione")
+  transazioniOrigine      Transazione[] @relation("FonteOrigine")
 
-    // Relazioni
-    utenteId                String
-    utente                  Utente        @relation(fields: [utenteId], references: [id], onDelete: Cascade)
-    transazioniOrigine      Transazione[] @relation("FonteOrigine")
-    transazioniDestinazione Transazione[] @relation("FonteDestinazione")
-
-    @@map("fonti")
+  @@map("fonti")
 }
 
 model Transazione {
-    id          String          @id @default(cuid())
-    tipo        TipoTransazione
-    importo     Float
-    descrizione String
-    luogo       String?
-    data        DateTime        @default(now())
-    createdAt   DateTime        @default(now())
-    updatedAt   DateTime        @updatedAt
+  id                  String          @id @default(cuid())
+  tipo                TipoTransazione
+  importo             Float
+  descrizione         String
+  luogo               String?
+  data                DateTime        @default(now())
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+  utenteId            String
+  fonteId             String
+  fonteDestinazioneId String?
+  fonteDestinazione   Fonte?          @relation("FonteDestinazione", fields: [fonteDestinazioneId], references: [id])
+  fonte               Fonte           @relation("FonteOrigine", fields: [fonteId], references: [id])
+  utente              Utente          @relation(fields: [utenteId], references: [id], onDelete: Cascade)
 
-    // Relazioni
-    utenteId String
-    utente   Utente @relation(fields: [utenteId], references: [id], onDelete: Cascade)
-
-    fonteId String
-    fonte   Fonte  @relation("FonteOrigine", fields: [fonteId], references: [id])
-
-    fonteDestinazioneId String?
-    fonteDestinazione   Fonte?  @relation("FonteDestinazione", fields: [fonteDestinazioneId], references: [id])
-
-    @@map("transazioni")
+  @@map("transazioni")
 }
 
 model Categoria {
-    id        String        @id @default(cuid())
-    nome      String
-    colore    String?
-    icona     String?
-    tipo      TipoCategoria
-    createdAt DateTime      @default(now())
-    updatedAt DateTime      @updatedAt
+  id        String        @id @default(cuid())
+  nome      String
+  colore    String?
+  icona     String?
+  tipo      TipoCategoria
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
 
-    @@map("categorie")
+  @@map("categorie")
 }
 
 enum TipoFonte {
-    CARTA
-    CONTANTI
-    DIGITALE
+  CARTA
+  CONTANTI
+  DIGITALE
 }
 
 enum TipoTransazione {
-    ENTRATA
-    SPESA
-    TRASFERIMENTO
+  ENTRATA
+  SPESA
+  TRASFERIMENTO
 }
 
 enum TipoCategoria {
-    ENTRATA
-    SPESA
+  ENTRATA
+  SPESA
 }
