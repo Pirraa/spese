@@ -124,28 +124,18 @@ const Trasferimenti = () => {
     }
 
     try {
-      // Crea due transazioni: una di spesa dalla fonte di origine e una di entrata alla fonte di destinazione
       const importo = parseFloat(formData.importo);
       const descrizione =
         formData.descrizione ||
         `Trasferimento da ${fonteDa?.nome} a ${fonteA?.nome}`;
 
-      // Transazione di uscita dalla fonte di origine
       await transazioniApi.create({
-        tipo: "SPESA",
-        importo: importo,
-        descrizione: `${descrizione} (Uscita)`,
+        tipo: "TRASFERIMENTO",
+        importo,
+        descrizione,
         fonteId: formData.fonteDa,
-        data: data.toISOString(),
-      });
-
-      // Transazione di entrata nella fonte di destinazione
-      await transazioniApi.create({
-        tipo: "ENTRATA",
-        importo: importo,
-        descrizione: `${descrizione} (Entrata)`,
-        fonteId: formData.fonteA,
-        data: data.toISOString(),
+        fonteDestinazioneId: formData.fonteA,
+        data: `${format(data, "yyyy-MM-dd")}T00:00:00Z`,
       });
 
       toast({
@@ -251,7 +241,7 @@ const Trasferimenti = () => {
                     className={cn(
                       "pl-8 text-lg font-semibold",
                       saldoInsufficiente &&
-                        "border-red-500 focus:border-red-500"
+                        "border-red-500 focus:border-red-500",
                     )}
                   />
                 </div>
@@ -364,7 +354,7 @@ const Trasferimenti = () => {
                       variant="outline"
                       className={cn(
                         "w-full justify-start text-left font-normal",
-                        !data && "text-muted-foreground"
+                        !data && "text-muted-foreground",
                       )}
                     >
                       <CalendarIcon className="mr-2 h-4 w-4" />
@@ -380,6 +370,7 @@ const Trasferimenti = () => {
                       onSelect={(date) => date && setData(date)}
                       initialFocus
                       className="pointer-events-auto"
+                      disabled={(date) => date > new Date()}
                     />
                   </PopoverContent>
                 </Popover>

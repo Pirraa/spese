@@ -193,6 +193,16 @@ export const transazioniApi = {
     const result = await response.json();
     return result.data;
   },
+
+  // Ottieni gli anni disponibili per le statistiche
+  getAnniDisponibili: async (): Promise<number[]> => {
+    const response = await authenticatedFetch(`${API_BASE_URL}/transazioni/statistiche/anni`);
+    if (!response.ok) {
+      throw new Error('Errore nel recupero degli anni disponibili');
+    }
+    const result = await response.json();
+    return result.data?.years || [];
+  },
 };
 
 // Funzioni di utilità per convertire i tipi

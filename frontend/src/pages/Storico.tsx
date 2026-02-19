@@ -72,102 +72,100 @@ const Storico = () => {
   const { toast } = useToast();
 
   const [statistiche, setStatistiche] = useState<StatisticaAnnuale[]>([]);
+  const [anniDisponibili, setAnniDisponibili] = useState<number[]>([]);
   const [annoSelezionato, setAnnoSelezionato] = useState<number>(
-    new Date().getFullYear()
+    new Date().getFullYear(),
   );
   const [loading, setLoading] = useState(true);
 
   // Carica dati storici
   useEffect(() => {
+    const caricaAnniDisponibili = async () => {
+      try {
+        const anni = await transazioniApi.getAnniDisponibili();
+        if (anni.length === 0) {
+          const currentYear = new Date().getFullYear();
+          setAnniDisponibili([currentYear]);
+          setAnnoSelezionato(currentYear);
+          return;
+        }
+        setAnniDisponibili(anni);
+        if (!anni.includes(annoSelezionato)) {
+          setAnnoSelezionato(anni[anni.length - 1]);
+        }
+      } catch (error) {
+        console.error("Errore nel caricamento degli anni:", error);
+        const currentYear = new Date().getFullYear();
+        setAnniDisponibili([currentYear]);
+        setAnnoSelezionato(currentYear);
+      }
+    };
+
+    caricaAnniDisponibili();
+  }, []);
+
+  useEffect(() => {
     const caricaStorico = async () => {
       try {
         setLoading(true);
 
-        // Ottieni gli ultimi 3 anni di dati
-        const anniDaCaricare = [
-          annoSelezionato - 1,
-          annoSelezionato,
-          annoSelezionato + 1,
-        ].filter(
-          (anno) => anno >= 2020 && anno <= new Date().getFullYear() + 1
-        );
+        const statisticheMesi: StatisticaMensile[] = [];
+        let entrateAnno = 0;
+        let speseAnno = 0;
+        const nomiMesi = [
+          "Gen",
+          "Feb",
+          "Mar",
+          "Apr",
+          "Mag",
+          "Giu",
+          "Lug",
+          "Ago",
+          "Set",
+          "Ott",
+          "Nov",
+          "Dic",
+        ];
 
-        const statisticheAnni: StatisticaAnnuale[] = [];
+        for (let mese = 1; mese <= 12; mese++) {
+          try {
+            const stats = await transazioniApi.getStatistiche({
+              mese,
+              anno: annoSelezionato,
+            });
+            const statisticaMese: StatisticaMensile = {
+              mese,
+              anno: annoSelezionato,
+              entrate: stats.entrate?.totale || 0,
+              spese: stats.spese?.totale || 0,
+              bilancio: stats.bilancio || 0,
+              nomeMese: nomiMesi[mese - 1],
+            };
 
-        for (const anno of anniDaCaricare) {
-          const statisticheMesi: StatisticaMensile[] = [];
-          let entrateAnno = 0;
-          let speseAnno = 0;
-
-          // Carica dati per ogni mese dell'anno
-          for (let mese = 1; mese <= 12; mese++) {
-            try {
-              const stats = await transazioniApi.getStatistiche({ mese, anno });
-              const nomiMesi = [
-                "Gen",
-                "Feb",
-                "Mar",
-                "Apr",
-                "Mag",
-                "Giu",
-                "Lug",
-                "Ago",
-                "Set",
-                "Ott",
-                "Nov",
-                "Dic",
-              ];
-
-              const statisticaMese: StatisticaMensile = {
-                mese,
-                anno,
-                entrate: stats.entrate?.totale || 0,
-                spese: stats.spese?.totale || 0,
-                bilancio: stats.bilancio || 0,
-                nomeMese: nomiMesi[mese - 1],
-              };
-
-              statisticheMesi.push(statisticaMese);
-              entrateAnno += statisticaMese.entrate;
-              speseAnno += statisticaMese.spese;
-            } catch (error) {
-              // Se non ci sono dati per questo mese, aggiungi valori zero
-              const nomiMesi = [
-                "Gen",
-                "Feb",
-                "Mar",
-                "Apr",
-                "Mag",
-                "Giu",
-                "Lug",
-                "Ago",
-                "Set",
-                "Ott",
-                "Nov",
-                "Dic",
-              ];
-
-              statisticheMesi.push({
-                mese,
-                anno,
-                entrate: 0,
-                spese: 0,
-                bilancio: 0,
-                nomeMese: nomiMesi[mese - 1],
-              });
-            }
+            statisticheMesi.push(statisticaMese);
+            entrateAnno += statisticaMese.entrate;
+            speseAnno += statisticaMese.spese;
+          } catch (error) {
+            statisticheMesi.push({
+              mese,
+              anno: annoSelezionato,
+              entrate: 0,
+              spese: 0,
+              bilancio: 0,
+              nomeMese: nomiMesi[mese - 1],
+            });
           }
+        }
 
-          statisticheAnni.push({
-            anno,
+        setStatistiche([
+          {
+            anno: annoSelezionato,
             entrateAnno,
             speseAnno,
             bilancioAnno: entrateAnno - speseAnno,
             mesi: statisticheMesi,
-          });
-        }
-
-        setStatistiche(statisticheAnni);
+          },
+        ]);
       } catch (error) {
         console.error("Errore nel caricamento dello storico:", error);
         toast({
@@ -245,10 +243,7 @@ const Storico = () => {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {Array.from(
-                  { length: 6 },
-                  (_, i) => new Date().getFullYear() - 2 + i
-                ).map((anno) => (
+                {anniDisponibili.map((anno) => (
                   <SelectItem key={anno} value={anno.toString()}>
                     {anno}
                   </SelectItem>

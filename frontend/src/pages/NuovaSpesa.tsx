@@ -106,13 +106,13 @@ const NuovaSpesa = () => {
         descrizione: formData.descrizione,
         fonteId: formData.fonte,
         luogo: formData.luogo || undefined,
-        data: data.toISOString(),
+        data: `${format(data, "yyyy-MM-dd")}T00:00:00Z`,
       });
 
       toast({
         title: "Spesa registrata",
         description: `€ ${parseFloat(formData.importo).toFixed(
-          2
+          2,
         )} sottratti da ${fonteSelezionata?.nome}`,
       });
 
@@ -191,7 +191,7 @@ const NuovaSpesa = () => {
                     className={cn(
                       "pl-8 text-lg font-semibold",
                       saldoInsufficiente &&
-                        "border-red-500 focus:border-red-500"
+                        "border-red-500 focus:border-red-500",
                     )}
                   />
                 </div>
@@ -284,7 +284,7 @@ const NuovaSpesa = () => {
                       variant="outline"
                       className={cn(
                         "w-full justify-start text-left font-normal",
-                        !data && "text-muted-foreground"
+                        !data && "text-muted-foreground",
                       )}
                     >
                       <CalendarIcon className="mr-2 h-4 w-4" />
@@ -300,6 +300,7 @@ const NuovaSpesa = () => {
                       onSelect={(date) => date && setData(date)}
                       initialFocus
                       className="pointer-events-auto"
+                      disabled={(date) => date > new Date()}
                     />
                   </PopoverContent>
                 </Popover>

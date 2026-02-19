@@ -89,7 +89,7 @@ const NuovaEntrata = () => {
         importo: parseFloat(formData.importo),
         descrizione: formData.descrizione,
         fonteId: formData.fonte,
-        data: data.toISOString(),
+        data: `${format(data, "yyyy-MM-dd")}T00:00:00Z`,
       });
 
       const fonteSelezionata = fonti.find((f) => f.id === formData.fonte);
@@ -236,7 +236,7 @@ const NuovaEntrata = () => {
                       variant="outline"
                       className={cn(
                         "w-full justify-start text-left font-normal",
-                        !data && "text-muted-foreground"
+                        !data && "text-muted-foreground",
                       )}
                     >
                       <CalendarIcon className="mr-2 h-4 w-4" />
@@ -252,6 +252,7 @@ const NuovaEntrata = () => {
                       onSelect={(date) => date && setData(date)}
                       initialFocus
                       className="pointer-events-auto"
+                      disabled={(date) => date > new Date()}
                     />
                   </PopoverContent>
                 </Popover>

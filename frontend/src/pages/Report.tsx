@@ -96,7 +96,9 @@ const Report = () => {
         setFonti(fontiBE);
 
         // Carica tutte le transazioni
-        const { transazioni: transazioniBE } = await transazioniApi.getAll();
+        const { transazioni: transazioniBE } = await transazioniApi.getAll({
+          limit: 0,
+        });
         const transazioniConvertite: TransazioneCompleta[] = transazioniBE.map(
           (t: ApiTransazione) => ({
             id: t.id,
@@ -107,7 +109,7 @@ const Report = () => {
             fonteDestinazione: t.fonteDestinazione?.nome,
             data: new Date(t.data).toISOString().split("T")[0],
             luogo: t.luogo,
-          })
+          }),
         );
 
         setTransazioni(transazioniConvertite);
@@ -159,7 +161,7 @@ const Report = () => {
       else if (t.tipo === "spesa") acc.spese += t.importo;
       return acc;
     },
-    { entrate: 0, spese: 0 }
+    { entrate: 0, spese: 0 },
   );
 
   const bilancio = statistiche.entrate - statistiche.spese;
@@ -400,7 +402,7 @@ const Report = () => {
                         variant="outline"
                         className={cn(
                           "w-full justify-start text-left font-normal",
-                          !filtri.dataInizio && "text-muted-foreground"
+                          !filtri.dataInizio && "text-muted-foreground",
                         )}
                       >
                         <CalendarIcon className="mr-2 h-4 w-4" />
@@ -434,7 +436,7 @@ const Report = () => {
                         variant="outline"
                         className={cn(
                           "w-full justify-start text-left font-normal",
-                          !filtri.dataFine && "text-muted-foreground"
+                          !filtri.dataFine && "text-muted-foreground",
                         )}
                       >
                         <CalendarIcon className="mr-2 h-4 w-4" />
@@ -509,7 +511,7 @@ const Report = () => {
                       .sort(
                         (a, b) =>
                           new Date(b.data).getTime() -
-                          new Date(a.data).getTime()
+                          new Date(a.data).getTime(),
                       )
                       .map((transazione) => (
                         <TableRow key={transazione.id}>
@@ -544,7 +546,7 @@ const Report = () => {
                                   "text-green-600",
                                 transazione.tipo === "spesa" && "text-red-600",
                                 transazione.tipo === "trasferimento" &&
-                                  "text-blue-600"
+                                  "text-blue-600",
                               )}
                             >
                               {transazione.tipo === "spesa" && "-"}€{" "}

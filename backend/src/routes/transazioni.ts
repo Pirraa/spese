@@ -17,7 +17,16 @@ const transazioneSchema = z.object({
   luogo: z.string().optional(),
   fonteId: z.string().min(1, 'La fonte è obbligatoria'),
   fonteDestinazioneId: z.string().optional(),
-  data: z.string().datetime().optional(),
+  data: z.string().datetime().optional().refine(
+    (date) => {
+      if (!date) return true; // Se non è fornita, usa Today
+      const dataTransazione = new Date(date);
+      const oggi = new Date();
+      oggi.setHours(23, 59, 59, 999);
+      return dataTransazione <= oggi;
+    },
+    { message: 'La data non può essere nel futuro' }
+  ),
 });
 
 // GET /api/transazioni - Ottieni tutte le transazioni dell'utente
@@ -32,6 +41,10 @@ router.get('/', async (req: AuthRequest, res, next) => {
       ...(tipo ? { tipo: tipo as any } : {})
     };
 
+    const limitValue = parseInt(limit as string);
+    const offsetValue = parseInt(offset as string);
+    const usePagination = Number.isFinite(limitValue) && limitValue > 0;
+
     const transazioni = await prisma.transazione.findMany({
       where: whereClause,
       include: {
@@ -39,8 +52,7 @@ router.get('/', async (req: AuthRequest, res, next) => {
         fonteDestinazione: true
       },
       orderBy: { data: 'desc' },
-      take: parseInt(limit as string),
-      skip: parseInt(offset as string)
+      ...(usePagination ? { take: limitValue, skip: offsetValue } : {})
     });
     
     const totale = await prisma.transazione.count({ where: whereClause });
@@ -50,9 +62,38 @@ router.get('/', async (req: AuthRequest, res, next) => {
       data: transazioni,
       pagination: {
         total: totale,
-        limit: parseInt(limit as string),
-        offset: parseInt(offset as string)
+        limit: usePagination ? limitValue : totale,
+        offset: usePagination ? offsetValue : 0
       }
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// GET /api/transazioni/statistiche/anni - Anni disponibili per le statistiche
+router.get('/statistiche/anni', async (req: AuthRequest, res, next) => {
+  try {
+    const range = await prisma.transazione.aggregate({
+      where: { utenteId: req.userId! },
+      _min: { data: true },
+      _max: { data: true }
+    });
+
+    if (!range._min.data || !range._max.data) {
+      return res.json({
+        success: true,
+        data: { years: [] }
+      });
+    }
+
+    const minYear = range._min.data.getFullYear();
+    const maxYear = range._max.data.getFullYear();
+    const years = Array.from({ length: maxYear - minYear + 1 }, (_, i) => minYear + i);
+
+    res.json({
+      success: true,
+      data: { years }
     });
   } catch (error) {
     next(error);
@@ -105,15 +146,27 @@ router.post('/', async (req: AuthRequest, res, next) => {
       throw new AppError('Fonte non trovata o non autorizzata', 404);
     }
     
-    // Se è un trasferimento, verifica anche la fonte destinazione
-    if (validatedData.tipo === 'TRASFERIMENTO' && validatedData.fonteDestinazioneId) {
+    if (validatedData.tipo !== 'TRASFERIMENTO' && validatedData.fonteDestinazioneId) {
+      throw new AppError('La fonte destinazione è valida solo per i trasferimenti', 400);
+    }
+
+    // Se è un trasferimento, la fonte destinazione è obbligatoria e deve essere diversa
+    if (validatedData.tipo === 'TRASFERIMENTO') {
+      if (!validatedData.fonteDestinazioneId) {
+        throw new AppError('Fonte destinazione obbligatoria per il trasferimento', 400);
+      }
+
+      if (validatedData.fonteDestinazioneId === validatedData.fonteId) {
+        throw new AppError('La fonte destinazione deve essere diversa dalla fonte origine', 400);
+      }
+
       const fonteDestinazione = await prisma.fonte.findUnique({
-        where: { 
+        where: {
           id: validatedData.fonteDestinazioneId,
           utenteId: req.userId!
         }
       });
-      
+
       if (!fonteDestinazione) {
         throw new AppError('Fonte destinazione non trovata o non autorizzata', 404);
       }
@@ -122,11 +175,23 @@ router.post('/', async (req: AuthRequest, res, next) => {
     // Inizio transazione database per garantire consistenza
     const result = await prisma.$transaction(async (tx) => {
       // Crea la transazione
+      // Correggi il parsing della data: estrai la data (YYYY-MM-DD) dalla stringa ISO
+      let dataTransazione: Date;
+      if (validatedData.data) {
+        const dataString = validatedData.data.split('T')[0]; // Prendi YYYY-MM-DD
+        dataTransazione = new Date(dataString + 'T00:00:00Z'); // Crea data UTC
+      } else {
+        // Se non fornita, usa oggi in UTC
+        const oggi = new Date();
+        const dataString = oggi.toISOString().split('T')[0];
+        dataTransazione = new Date(dataString + 'T00:00:00Z');
+      }
+
       const transazione = await tx.transazione.create({
         data: {
           ...validatedData,
           utenteId: req.userId!,
-          data: validatedData.data ? new Date(validatedData.data) : new Date()
+          data: dataTransazione
         },
         include: {
           fonte: true,
