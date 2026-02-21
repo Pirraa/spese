@@ -134,11 +134,15 @@ export const transazioniApi = {
   // Ottieni tutte le transazioni
   getAll: async (params?: { limit?: number; offset?: number; tipo?: string }): Promise<{ transazioni: ApiTransazione[]; total: number }> => {
     const searchParams = new URLSearchParams();
-    if (params?.limit) searchParams.append('limit', params.limit.toString());
-    if (params?.offset) searchParams.append('offset', params.offset.toString());
+    if (params?.limit !== undefined) searchParams.append('limit', params.limit.toString());
+    if (params?.offset !== undefined) searchParams.append('offset', params.offset.toString());
     if (params?.tipo) searchParams.append('tipo', params.tipo);
 
-    const response = await authenticatedFetch(`${API_BASE_URL}/transazioni?${searchParams}`);
+    const queryString = searchParams.toString();
+    const url = queryString
+      ? `${API_BASE_URL}/transazioni?${queryString}`
+      : `${API_BASE_URL}/transazioni`;
+    const response = await authenticatedFetch(url);
     if (!response.ok) {
       throw new Error('Errore nel recupero delle transazioni');
     }

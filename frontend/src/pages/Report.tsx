@@ -85,19 +85,49 @@ const Report = () => {
     ricerca: "",
   });
 
-  // Carica dati iniziali
+  const hasActiveFilters =
+    filtri.tipo !== "tutti" ||
+    filtri.fonte !== "tutte" ||
+    !!filtri.dataInizio ||
+    !!filtri.dataFine ||
+    filtri.ricerca.trim().length > 0;
+
+  // Carica fonti per i filtri
   useEffect(() => {
-    const caricaDati = async () => {
+    const caricaFonti = async () => {
+      try {
+        const fontiBE = await fontiApi.getAll();
+        setFonti(fontiBE);
+      } catch (error) {
+        console.error("Errore nel caricamento delle fonti:", error);
+        toast({
+          title: "Errore",
+          description:
+            "Impossibile caricare le fonti. Controlla la connessione al server.",
+          variant: "destructive",
+        });
+      }
+    };
+
+    caricaFonti();
+  }, [toast]);
+
+  // Carica transazioni in base ai filtri
+  useEffect(() => {
+    const caricaTransazioni = async () => {
+      const shouldFetchAll = hasActiveFilters && transazioni.length <= 20;
+      const shouldFetchRecent = !hasActiveFilters && transazioni.length > 20;
+      const shouldInitialFetch = transazioni.length === 0;
+
+      if (!shouldFetchAll && !shouldFetchRecent && !shouldInitialFetch) {
+        return;
+      }
+
       try {
         setLoading(true);
 
-        // Carica fonti per i filtri
-        const fontiBE = await fontiApi.getAll();
-        setFonti(fontiBE);
-
-        // Carica tutte le transazioni
         const { transazioni: transazioniBE } = await transazioniApi.getAll({
-          limit: 0,
+          limit: hasActiveFilters ? 0 : 20,
         });
         const transazioniConvertite: TransazioneCompleta[] = transazioniBE.map(
           (t: ApiTransazione) => ({
@@ -114,7 +144,7 @@ const Report = () => {
 
         setTransazioni(transazioniConvertite);
       } catch (error) {
-        console.error("Errore nel caricamento dei dati:", error);
+        console.error("Errore nel caricamento delle transazioni:", error);
         toast({
           title: "Errore",
           description:
@@ -126,8 +156,8 @@ const Report = () => {
       }
     };
 
-    caricaDati();
-  }, [toast]);
+    caricaTransazioni();
+  }, [toast, hasActiveFilters, transazioni.length]);
 
   // Filtra le transazioni
   const transazioniFiltrate = transazioni.filter((t) => {

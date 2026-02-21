@@ -1,0 +1,63 @@
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: spese-db
+    environment:
+      POSTGRES_USER: spese_user
+      POSTGRES_PASSWORD: spese_password
+      POSTGRES_DB: spese_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U spese_user -d spese_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  backend:
+    image: node:20-bullseye
+    container_name: spese-backend
+    working_dir: /app
+    environment:
+      DATABASE_URL: postgresql://spese_user:spese_password@db:5432/spese_db?schema=public
+      PORT: "3001"
+      NODE_ENV: development
+      JWT_SECRET: dev_change_me
+      JWT_EXPIRES_IN: 7d
+      CORS_ORIGIN: http://localhost:8080
+      RATE_LIMIT_WINDOW_MS: "900000"
+      RATE_LIMIT_MAX_REQUESTS: "1000"
+    ports:
+      - "3001:3001"
+    volumes:
+      - ./backend:/app
+      - backend-node-modules:/app/node_modules
+    depends_on:
+      db:
+        condition: service_healthy
+    command: sh -c "npm config delete proxy; npm config delete https-proxy; if [ ! -x node_modules/.bin/prisma ]; then npm install; fi; npx --no-install prisma generate && npm run dev"
+    restart: unless-stopped
+
+  frontend:
+    image: node:20-alpine
+    container_name: spese-frontend
+    working_dir: /app
+    environment:
+      VITE_API_URL: http://localhost:3001/api
+    ports:
+      - "8080:5173"
+    volumes:
+      - ./frontend:/app
+      - frontend-node-modules:/app/node_modules
+    command: sh -c "npm config delete proxy; npm config delete https-proxy; if [ ! -x node_modules/.bin/vite ]; then npm install; fi; npm run dev -- --host 0.0.0.0 --port 5173"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  db-data:
+  backend-node-modules:
+  frontend-node-modules:
